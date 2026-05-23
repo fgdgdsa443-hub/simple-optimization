@@ -1,4 +1,4 @@
-name: Build Super FPS Boost Mod
+name: Build Optimization Mod
 
 on:
   workflow_dispatch:
@@ -10,15 +10,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Generate mod
+      - name: Create Fabric mod project
         run: |
-          mkdir -p src/main/java/ru/fpsboost
-          mkdir -p src/main/resources
-
-          cat > settings.gradle <<'EOF'
+          cat > settings.gradle << 'EOF'
           pluginManagement {
               repositories {
                   maven { url = "https://maven.fabricmc.net/" }
@@ -28,183 +25,235 @@ jobs:
           }
           EOF
 
-          cat > gradle.properties <<'EOF'
+          cat > gradle.properties << 'EOF'
           org.gradle.jvmargs=-Xmx2G
           minecraft_version=1.21.4
-          yarn_mappings=1.21.4+build.9
+          yarn_mappings=1.21.4+build.8
           loader_version=0.16.10
           mod_version=1.0.0
-          archives_base_name=super-fps-boost-1.21.4
+          maven_group=ru.simpleoptimization
+          archives_base_name=simple-optimization
           EOF
 
-          cat > build.gradle <<'EOF'
-          plugins { id 'fabric-loom' version '1.9.2' }
-          version = project.mod_version
-          base { archivesName = project.archives_base_name }
-          repositories { maven { url = "https://maven.fabricmc.net/" } }
-          dependencies {
-              minecraft "com.mojang:minecraft:\({project.minecraft_version}"
-              mappings "net.fabricmc:yarn:\){project.yarn_mappings}:v2"
-              modImplementation "net.fabricmc:fabric-loader:\({project.loader_version}"
+          cat > build.gradle << 'EOF'
+          plugins {
+              id 'fabric-loom' version '1.9-SNAPSHOT'
           }
-          tasks.withType(JavaCompile).configureEach { options.release = 21 }
+
+          version = project.mod_version
+          group = project.maven_group
+
+          base {
+              archivesName = project.archives_base_name
+          }
+
+          repositories {
+              maven { url = "https://maven.fabricmc.net/" }
+          }
+
+          dependencies {
+              minecraft "com.mojang:minecraft:" + project.minecraft_version
+              mappings "net.fabricmc:yarn:" + project.yarn_mappings + ":v2"
+              modImplementation "net.fabricmc:fabric-loader:" + project.loader_version
+          }
+
+          processResources {
+              inputs.property "version", project.version
+              filesMatching("fabric.mod.json") {
+                  expand "version": project.version
+              }
+          }
+
+          tasks.withType(JavaCompile).configureEach {
+              options.release = 21
+          }
+
+          java {
+              sourceCompatibility = JavaVersion.VERSION_21
+              targetCompatibility = JavaVersion.VERSION_21
+          }
           EOF
 
-          cat > src/main/resources/fabric.mod.json <<'EOF'
+          mkdir -p src/main/java/ru/simpleoptimization
+          mkdir -p src/main/resources/assets/simpleoptimization/lang
+
+          cat > src/main/resources/fabric.mod.json << 'EOF'
           {
             "schemaVersion": 1,
-            "id": "superfpsboost",
-            "version": "\){version}",
-            "name": "Super FPS Boost",
-            "description": "Включается по кнопке O даёт дикий буст фпс",
-            "authors": ["Auto Generated"],
+            "id": "simpleoptimization",
+            "version": "${version}",
+            "name": "Simple Optimization",
+            "description": "Simple FPS optimization mod for Fabric 1.21.4",
+            "authors": ["User"],
             "license": "MIT",
             "environment": "client",
             "entrypoints": {
-              "client": ["ru.fpsboost.FpsBoostMod"]
+              "client": [
+                "ru.simpleoptimization.SimpleOptimizationMod"
+              ]
             },
             "depends": {
-              "fabricloader": ">=0.16",
-              "minecraft": "1.21.4"
+              "fabricloader": ">=0.16.10",
+              "minecraft": "1.21.4",
+              "java": ">=21"
             }
           }
           EOF
 
-          cat > src/main/java/ru/fpsboost/FpsBoostMod.java <<'EOF'
-          package ru.fpsboost;
+          cat > src/main/resources/assets/simpleoptimization/lang/ru_ru.json << 'EOF'
+          {
+            "key.simpleoptimization.toggle": "Переключить оптимизацию",
+            "category.simpleoptimization": "Оптимизация"
+          }
+          EOF
+
+          cat > src/main/resources/assets/simpleoptimization/lang/en_us.json << 'EOF'
+          {
+            "key.simpleoptimization.toggle": "Toggle Optimization",
+            "category.simpleoptimization": "Optimization"
+          }
+          EOF
+
+          cat > src/main/java/ru/simpleoptimization/SimpleOptimizationMod.java << 'EOF'
+          package ru.simpleoptimization;
 
           import net.fabricmc.api.ClientModInitializer;
-          import net.minecraft.client.MinecraftClient;
+          import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+          import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+          import net.minecraft.client.option.KeyBinding;
+          import net.minecraft.client.util.InputUtil;
           import net.minecraft.text.Text;
-          import net.minecraft.util.Formatting;
           import org.lwjgl.glfw.GLFW;
 
-          public class FpsBoostMod implements ClientModInitializer {
-
-              public static boolean enabled = false;
-              private static boolean keyWasDown = false;
-
+          public class SimpleOptimizationMod implements ClientModInitializer {
+              
+              public static KeyBinding toggleKey;
+              public static boolean optimizationEnabled = false;
+              private static boolean wasPressed = false;
+              
               @Override
               public void onInitializeClient() {
-
-                  MinecraftClient.getInstance().execute(() -> {
-                      Thread tickThread = new Thread(() -> {
-                          while(true) {
-                              try {
-                                  Thread.sleep(10);
-
-                                  MinecraftClient client = MinecraftClient.getInstance();
-
-                                  if (client.player == null || client.world == null) {
-                                      keyWasDown = false;
-                                      continue;
-                                  }
-
-                                  boolean keyDown = GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_O) == 1;
-
-                                  if (keyDown && !keyWasDown) {
-                                      enabled = !enabled;
-
-                                      client.execute(() -> {
-                                          if (client.player != null) {
-                                              if (enabled) {
-                                                  client.player.sendMessage(Text.literal("✅ FPS Буст ВКЛЮЧЕН").formatted(Formatting.GREEN), true);
-                                              } else {
-                                                  client.player.sendMessage(Text.literal("❌ FPS Буст ВЫКЛЮЧЕН").formatted(Formatting.RED), true);
-                                              }
-                                              client.worldRenderer.reload();
-                                          }
-                                      });
-                                  }
-
-                                  keyWasDown = keyDown;
-
-                              } catch (Exception e) {}
+                  toggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                          "key.simpleoptimization.toggle",
+                          InputUtil.Type.KEYSYM,
+                          GLFW.GLFW_KEY_O,
+                          "category.simpleoptimization"
+                  ));
+                  
+                  ClientTickEvents.END_CLIENT_TICK.register(client -> {
+                      if (client.player == null) return;
+                      
+                      boolean isPressed = toggleKey.isPressed();
+                      
+                      if (isPressed && !wasPressed) {
+                          optimizationEnabled = !optimizationEnabled;
+                          
+                          if (optimizationEnabled) {
+                              GraphicsOptimizer.enableOptimizations(client);
+                              client.player.sendMessage(
+                                  Text.literal("§a[Оптимизация] §fВключена! FPS повышен."),
+                                  false
+                              );
+                          } else {
+                              GraphicsOptimizer.disableOptimizations(client);
+                              client.player.sendMessage(
+                                  Text.literal("§c[Оптимизация] §fВыключена."),
+                                  false
+                              );
                           }
-                      });
-                      tickThread.setDaemon(true);
-                      tickThread.start();
-                  });
-
-              }
-
-          }
-          EOF
-
-          cat > src/main/java/ru/fpsboost/Mixins.java <<'EOF'
-          package ru.fpsboost;
-
-          import net.minecraft.block.LeavesBlock;
-          import net.minecraft.fluid.FluidState;
-          import net.minecraft.util.math.BlockPos;
-          import net.minecraft.world.BlockRenderView;
-          import org.spongepowered.asm.mixin.Mixin;
-          import org.spongepowered.asm.mixin.injection.At;
-          import org.spongepowered.asm.mixin.injection.Inject;
-          import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-
-          @Mixin(targets = "net.minecraft.client.render.block.BlockModels")
-          public abstract class MixinBlockModels {
-
-              @Inject(method = "isTranslucent", at = @At("HEAD"), cancellable = true)
-              private void makeWaterOpaqueFarAway(BlockRenderView world, BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
-                  if (!FpsBoostMod.enabled) return;
-
-                  BlockPos camera = BlockPos.ofFloored(MinecraftClient.getInstance().gameRenderer.getCamera().getPos());
-
-                  if (camera.getManhattanDistance(pos) > 16) {
-                      FluidState fluid = world.getFluidState(pos);
-                      if (!fluid.isEmpty()) {
-                          cir.setReturnValue(false);
                       }
-                  }
+                      
+                      wasPressed = isPressed;
+                  });
               }
           }
+          EOF
 
-          @Mixin(LeavesBlock.class)
-          public abstract class MixinLeavesBlock {
+          cat > src/main/java/ru/simpleoptimization/GraphicsOptimizer.java << 'EOF'
+          package ru.simpleoptimization;
 
-              @Inject(method = "isOpacity", at = @At("HEAD"), cancellable = true)
-              private void disableLeavesShading(CallbackInfoReturnable<Boolean> cir) {
-                  if (FpsBoostMod.enabled) {
-                      cir.setReturnValue(true);
+          import net.minecraft.client.MinecraftClient;
+          import net.minecraft.client.option.GameOptions;
+          import net.minecraft.client.option.CloudRenderMode;
+          import net.minecraft.client.option.GraphicsMode;
+
+          public class GraphicsOptimizer {
+              
+              private static int savedViewDistance = 12;
+              private static int savedSimulationDistance = 10;
+              
+              public static void enableOptimizations(MinecraftClient client) {
+                  GameOptions options = client.options;
+                  
+                  // Сохраняем текущие значения
+                  savedViewDistance = options.getViewDistance().getValue();
+                  savedSimulationDistance = options.getSimulationDistance().getValue();
+                  
+                  // Графика - FAST (убирает тени листвы, прозрачность)
+                  options.getGraphicsMode().setValue(GraphicsMode.FAST);
+                  
+                  // Облака - OFF
+                  options.getCloudRenderMode().setValue(CloudRenderMode.OFF);
+                  
+                  // Тени сущностей - OFF
+                  options.getEntityShadows().setValue(false);
+                  
+                  // Дальность рендера - низкая
+                  options.getViewDistance().setValue(6);
+                  
+                  // Дальность симуляции - низкая
+                  options.getSimulationDistance().setValue(4);
+                  
+                  // Мипмапы - OFF
+                  options.getMipmapLevels().setValue(0);
+                  
+                  // Размытие биомов - OFF
+                  options.getBiomeBlendRadius().setValue(0);
+                  
+                  // Применяем изменения
+                  reloadRenderer(client);
+              }
+              
+              public static void disableOptimizations(MinecraftClient client) {
+                  GameOptions options = client.options;
+                  
+                  // Восстанавливаем графику
+                  options.getGraphicsMode().setValue(GraphicsMode.FANCY);
+                  options.getCloudRenderMode().setValue(CloudRenderMode.FANCY);
+                  options.getEntityShadows().setValue(true);
+                  options.getViewDistance().setValue(12);
+                  options.getSimulationDistance().setValue(10);
+                  options.getMipmapLevels().setValue(4);
+                  options.getBiomeBlendRadius().setValue(2);
+                  
+                  // Применяем изменения
+                  reloadRenderer(client);
+              }
+              
+              private static void reloadRenderer(MinecraftClient client) {
+                  if (client.world != null) {
+                      client.worldRenderer.reload();
                   }
               }
           }
           EOF
 
-          cat > src/main/resources/superfpsboost.mixins.json <<'EOF'
-          {
-            "required": true,
-            "package": "ru.fpsboost",
-            "compatibilityLevel": "JAVA_21",
-            "client": [
-              "MixinBlockModels",
-              "MixinLeavesBlock"
-            ],
-            "injectors": {
-              "defaultRequire": 1
-            }
-          }
-          EOF
-
-      - name: Setup Java 21
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
-      - name: Setup Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.12.1
 
       - name: Build jar
-        run: gradle build --no-daemon
+        run: gradle build --no-daemon --stacktrace
 
       - name: Upload jar
         uses: actions/upload-artifact@v4
         with:
-          name: super-fps-boost-1.21.4-ready
-          path: |
-            build/libs/*.jar
-            !build/libs/*-sources.jar
-            !build/libs/*-dev.jar
+          name: simple-optimization-jar
+          path: build/libs/*-1.0.0.jar
