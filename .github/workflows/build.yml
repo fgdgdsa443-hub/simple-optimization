@@ -15,6 +15,7 @@ jobs:
 
       - name: Create Fabric mod project
         run: |
+          # === settings.gradle ===
           cat > settings.gradle << 'EOF'
           pluginManagement {
               repositories {
@@ -25,16 +26,19 @@ jobs:
           }
           EOF
 
+          # === gradle.properties ===
           cat > gradle.properties << 'EOF'
           org.gradle.jvmargs=-Xmx2G
           minecraft_version=1.21.4
           yarn_mappings=1.21.4+build.8
           loader_version=0.16.10
+          fabric_version=0.119.2+1.21.4
           mod_version=1.0.0
           maven_group=ru.simpleoptimization
           archives_base_name=simple-optimization
           EOF
 
+          # === build.gradle ===
           cat > build.gradle << 'EOF'
           plugins {
               id 'fabric-loom' version '1.9-SNAPSHOT'
@@ -55,6 +59,7 @@ jobs:
               minecraft "com.mojang:minecraft:" + project.minecraft_version
               mappings "net.fabricmc:yarn:" + project.yarn_mappings + ":v2"
               modImplementation "net.fabricmc:fabric-loader:" + project.loader_version
+              modImplementation "net.fabricmc.fabric-api:fabric-api:" + project.fabric_version
           }
 
           processResources {
@@ -74,9 +79,11 @@ jobs:
           }
           EOF
 
+          # === Создаём директории ===
           mkdir -p src/main/java/ru/simpleoptimization
           mkdir -p src/main/resources/assets/simpleoptimization/lang
 
+          # === fabric.mod.json ===
           cat > src/main/resources/fabric.mod.json << 'EOF'
           {
             "schemaVersion": 1,
@@ -95,11 +102,13 @@ jobs:
             "depends": {
               "fabricloader": ">=0.16.10",
               "minecraft": "1.21.4",
+              "fabric-api": "*",
               "java": ">=21"
             }
           }
           EOF
 
+          # === ru_ru.json ===
           cat > src/main/resources/assets/simpleoptimization/lang/ru_ru.json << 'EOF'
           {
             "key.simpleoptimization.toggle": "Переключить оптимизацию",
@@ -107,6 +116,7 @@ jobs:
           }
           EOF
 
+          # === en_us.json ===
           cat > src/main/resources/assets/simpleoptimization/lang/en_us.json << 'EOF'
           {
             "key.simpleoptimization.toggle": "Toggle Optimization",
@@ -114,6 +124,7 @@ jobs:
           }
           EOF
 
+          # === SimpleOptimizationMod.java ===
           cat > src/main/java/ru/simpleoptimization/SimpleOptimizationMod.java << 'EOF'
           package ru.simpleoptimization;
 
@@ -169,6 +180,7 @@ jobs:
           }
           EOF
 
+          # === GraphicsOptimizer.java ===
           cat > src/main/java/ru/simpleoptimization/GraphicsOptimizer.java << 'EOF'
           package ru.simpleoptimization;
 
