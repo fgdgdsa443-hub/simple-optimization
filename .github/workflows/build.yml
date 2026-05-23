@@ -1,0 +1,307 @@
+name: Build Optimization Mod
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create Fabric mod project
+        run: |
+          # === Gradle files ===
+          cat > settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  maven { url = "https://maven.fabricmc.net/" }
+                  gradlePluginPortal()
+                  mavenCentral()
+              }
+          }
+          EOF
+
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2G
+          minecraft_version=1.21.4
+          yarn_mappings=1.21.4+build.8
+          loader_version=0.16.10
+          mod_version=1.0.0
+          maven_group=ru.simpleoptimization
+          archives_base_name=simple-optimization-1.21.4
+          EOF
+
+          cat > build.gradle <<'EOF'
+          plugins {
+              id 'fabric-loom' version '1.9-SNAPSHOT'
+          }
+
+          version = project.mod_version
+          group = project.maven_group
+
+          base {
+              archivesName = project.archives_base_name
+          }
+
+          repositories {
+              maven { url = "https://maven.fabricmc.net/" }
+              mavenCentral()
+          }
+
+          dependencies {
+              minecraft "com.mojang:minecraft:${project.minecraft_version}"
+              mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+              modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+          }
+
+          processResources {
+              inputs.property "version", project.version
+              filesMatching("fabric.mod.json") {
+                  expand "version": project.version
+              }
+          }
+
+          tasks.withType(JavaCompile).configureEach {
+              options.release = 21
+          }
+
+          java {
+              sourceCompatibility = JavaVersion.VERSION_21
+              targetCompatibility = JavaVersion.VERSION_21
+          }
+          EOF
+
+          # === fabric.mod.json ===
+          mkdir -p src/main/resources/assets/simpleoptimization/lang
+          
+          cat > src/main/resources/fabric.mod.json <<'EOF'
+          {
+            "schemaVersion": 1,
+            "id": "simpleoptimization",
+            "version": "${version}",
+            "name": "Simple Optimization",
+            "description": "Простой мод на оптимизацию FPS для Fabric 1.21.4",
+            "authors": ["Generated"],
+            "license": "MIT",
+            "environment": "client",
+            "entrypoints": {
+              "client": [
+                "ru.simpleoptimization.SimpleOptimizationMod"
+              ]
+            },
+            "depends": {
+              "fabricloader": ">=0.16.10",
+              "minecraft": "1.21.4",
+              "java": ">=21"
+            }
+          }
+          EOF
+
+          # === Языковые файлы ===
+          cat > src/main/resources/assets/simpleoptimization/lang/ru_ru.json <<'EOF'
+          {
+            "key.simpleoptimization.toggle": "Переключить оптимизацию",
+            "chat.simpleoptimization.enabled": "§a[Оптимизация] §fВключена! FPS повышен.",
+            "chat.simpleoptimization.disabled": "§c[Оптимизация] §fВыключена."
+          }
+          EOF
+
+          cat > src/main/resources/assets/simpleoptimization/lang/en_us.json <<'EOF'
+          {
+            "key.simpleoptimization.toggle": "Toggle Optimization",
+            "chat.simpleoptimization.enabled": "§a[Optimization] §fEnabled! FPS boosted.",
+            "chat.simpleoptimization.disabled": "§c[Optimization] §fDisabled."
+          }
+          EOF
+
+          # === Java файлы ===
+          mkdir -p src/main/java/ru/simpleoptimization
+
+          cat > src/main/java/ru/simpleoptimization/SimpleOptimizationMod.java <<'EOF'
+          package ru.simpleoptimization;
+
+          import net.fabricmc.api.ClientModInitializer;
+          import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+          import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+          import net.minecraft.client.option.KeyBinding;
+          import net.minecraft.client.util.InputUtil;
+          import net.minecraft.text.Text;
+          import org.lwjgl.glfw.GLFW;
+
+          public class SimpleOptimizationMod implements ClientModInitializer {
+              private static KeyBinding toggleKey;
+              private static boolean optimizationEnabled = false;
+              private static boolean wasPressed = false;
+
+              @Override
+              public void onInitializeClient() {
+                  toggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                          "key.simpleoptimization.toggle",
+                          InputUtil.Type.KEYSYM,
+                          GLFW.GLFW_KEY_O,
+                          "category.simpleoptimization.main"
+                  ));
+
+                  ClientTickEvents.END_CLIENT_TICK.register(client -> {
+                      if (client.player == null) return;
+
+                      boolean isPressed = toggleKey.isPressed();
+
+                      if (isPressed && !wasPressed) {
+                          optimizationEnabled = !optimizationEnabled;
+                          OptimizationHandler.apply(client, optimizationEnabled);
+
+                          if (optimizationEnabled) {
+                              client.player.sendMessage(
+                                      Text.literal("§a[Оптимизация] §fВключена! FPS повышен."),
+                                      false
+                              );
+                          } else {
+                              client.player.sendMessage(
+                                      Text.literal("§c[Оптимизация] §fВыключена."),
+                                      false
+                              );
+                          }
+                      }
+
+                      wasPressed = isPressed;
+                  });
+              }
+
+              public static boolean isOptimizationEnabled() {
+                  return optimizationEnabled;
+              }
+          }
+          EOF
+
+          cat > src/main/java/ru/simpleoptimization/OptimizationHandler.java <<'EOF'
+          package ru.simpleoptimization;
+
+          import net.minecraft.client.MinecraftClient;
+          import net.minecraft.client.option.GameOptions;
+          import net.minecraft.client.option.GraphicsMode;
+          import net.minecraft.client.option.CloudRenderMode;
+
+          public class OptimizationHandler {
+
+              public static void apply(MinecraftClient client, boolean enable) {
+                  GameOptions options = client.options;
+
+                  if (enable) {
+                      // ===========================================
+                      // ОПТИМИЗАЦИЯ ВКЛЮЧЕНА
+                      // ===========================================
+
+                      // Графика - Fast (убирает прозрачность листвы, тени листвы)
+                      options.getGraphicsMode().setValue(GraphicsMode.FAST);
+
+                      // Вода - Fast (убирает прозрачность и отражения воды)
+                      options.getTransparency().setValue(TransparencyMode.FAST);
+
+                      // Сглаженное освещение - OFF (убирает тени блоков)
+                      options.getSmoothLighting().setValue(SmoothLightingMode.OFF);
+
+                      // Облака - OFF
+                      options.getCloudRenderMode().setValue(CloudRenderMode.OFF);
+
+                      // Тени сущностей - OFF
+                      options.getEntityShadows().setValue(false);
+
+                      // Частицы - Minimal
+                      options.getParticles().setValue(ParticleMode.MINIMAL);
+
+                      // Максимальный FPS - 30 (можно убрать, если мешает)
+                      // options.getFpsLimit().setValue(30);
+
+                      // Дальность прорисовки - 5 (очень низкая)
+                      options.getViewDistance().setValue(5);
+
+                      // Дальность прорисовки тумана - 4
+                      options.getSimulationDistance().setValue(4);
+
+                      // Мипмапы - OFF (быстрее загрузка текстур)
+                      options.getMipmapLevels().setValue(0);
+
+                      // Смешивание биомов - OFF
+                      options.getBiomeBlendRadius().setValue(0);
+
+                      // Небо - OFF (убирает рендеринг неба)
+                      options.getSky().setValue(false);
+
+                      // Виньетка - OFF (маленький буст)
+                      options.getVignette().setValue(false);
+
+                      // Визуальные эффекты - OFF
+                      options.getDistortionEffectScale().setValue(0.0);
+
+                      // Эффект глубины - OFF
+                      options.getDepthOfField().setValue(false);
+
+                      // Свечение - OFF
+                      options.getGlowMode().setValue(GlowMode.OFF);
+
+                  } else {
+                      // ===========================================
+                      // ОПТИМИЗАЦИЯ ВЫКЛЮЧЕНА (стандартные настройки)
+                      // ===========================================
+
+                      options.getGraphicsMode().setValue(GraphicsMode.FANCY);
+                      options.getSmoothLighting().setValue(SmoothLightingMode.MAXIMUM);
+                      options.getCloudRenderMode().setValue(CloudRenderMode.FANCY);
+                      options.getEntityShadows().setValue(true);
+                      options.getParticles().setValue(ParticleMode.ALL);
+                      options.getViewDistance().setValue(12);
+                      options.getSimulationDistance().setValue(10);
+                      options.getMipmapLevels().setValue(4);
+                      options.getBiomeBlendRadius().setValue(2);
+                      options.getSky().setValue(true);
+                      options.getVignette().setValue(true);
+                      options.getDistortionEffectScale().setValue(1.0);
+                      options.getDepthOfField().setValue(false);
+                      options.getGlowMode().setValue(GlowMode.LIGHT_AND_MAGIC);
+                  }
+
+                  // Применяем настройки
+                  client.worldRenderer.reload();
+              }
+          }
+          EOF
+
+          # === Категория клавиатуры ===
+          mkdir -p src/main/resources/assets/simpleoptimization
+          cat > src/main/resources/assets/simpleoptimization/lang/en_us.json <<'EOF'
+          {
+            "key.simpleoptimization.toggle": "Toggle Optimization",
+            "category.simpleoptimization.main": "Simple Optimization",
+            "chat.simpleoptimization.enabled": "§a[Optimization] §fEnabled! FPS boosted.",
+            "chat.simpleoptimization.disabled": "§c[Optimization] §fDisabled."
+          }
+          EOF
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.12.1
+
+      - name: Build jar
+        run: gradle build --no-daemon --stacktrace
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: simple-optimization-1.21.4-jar
+          path: |
+            build/libs/*-1.0.0.jar
+            !build/libs/*-sources.jar
+            !build/libs/*-dev.jar
