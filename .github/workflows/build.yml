@@ -19,8 +19,8 @@ jobs:
           cat > settings.gradle << 'EOF'
           pluginManagement {
               repositories {
-                  maven { url = "https://maven.minecraftforge.net/" }
                   gradlePluginPortal()
+                  maven { url = "https://maven.minecraftforge.net/" }
                   mavenCentral()
               }
           }
@@ -28,10 +28,9 @@ jobs:
 
           # === gradle.properties ===
           cat > gradle.properties << 'EOF'
-          org.gradle.jvmargs=-Xmx2G
+          org.gradle.jvmargs=-Xmx3G
           minecraft_version=1.21.1
           forge_version=52.0.10
-          loader_version=4
           mod_version=1.0.0
           maven_group=ru.fullbright
           archives_base_name=simple-fullbright-1.21.1
@@ -39,20 +38,23 @@ jobs:
 
           # === build.gradle ===
           cat > build.gradle << 'EOF'
-          plugins {
-              id 'net.minecraftforge.gradle' version '7.+' apply false
+          buildscript {
+              repositories {
+                  maven { url = 'https://maven.minecraftforge.net/' }
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'net.minecraftforge.gradle:ForgeGradle:6.0.+'
+              }
           }
+
+          apply plugin: 'net.minecraftforge.gradle'
+          apply plugin: 'java'
 
           version = project.mod_version
           group = project.maven_group
 
-          base {
-              archivesName = project.archives_base_name
-          }
-
-          java {
-              toolchain.languageVersion = JavaLanguageVersion.of(21)
-          }
+          java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
           minecraft {
               mappings channel: 'official', version: project.minecraft_version
@@ -79,12 +81,12 @@ jobs:
           jar {
               manifest {
                   attributes([
-                      "Specification-Title"     : "simplefullbright",
-                      "Specification-Vendor"    : "User",
-                      "Specification-Version"   : "1",
-                      "Implementation-Title"    : project.name,
-                      "Implementation-Version"  : project.version,
-                      "Implementation-Vendor"   : "User",
+                      "Specification-Title": "simplefullbright",
+                      "Specification-Vendor": "User",
+                      "Specification-Version": "1",
+                      "Implementation-Title": project.name,
+                      "Implementation-Version": project.version,
+                      "Implementation-Vendor": "User",
                       "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
                   ])
               }
@@ -177,7 +179,6 @@ jobs:
 
               private static int currentMode = 0;
               private static final float[] MODES = {0f, 150f, 500f, 1000f};
-              private static final String[] MODE_NAMES = {"Выключен", "150", "500", "1000"};
               private static final String[] CHAT_KEYS = {
                   "chat.fullbright.disabled",
                   "chat.fullbright.mode1",
@@ -236,7 +237,7 @@ jobs:
           import net.minecraft.client.KeyMapping;
           import net.minecraftforge.client.settings.KeyConflictContext;
           import net.minecraftforge.client.settings.KeyModifier;
-          org.lwjgl.glfw.GLFW;
+          import org.lwjgl.glfw.GLFW;
 
           public class KeyBindings {
               public static KeyMapping TOGGLE_KEY;
@@ -262,7 +263,6 @@ jobs:
 
           import net.minecraft.client.Minecraft;
           import net.minecraftforge.api.distmarker.Dist;
-          import net.minecraftforge.api.distmarker.OnlyIn;
           import net.minecraftforge.event.TickEvent;
           import net.minecraftforge.eventbus.api.SubscribeEvent;
           import net.minecraftforge.fml.common.Mod;
