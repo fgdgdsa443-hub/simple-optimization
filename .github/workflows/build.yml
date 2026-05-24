@@ -15,7 +15,6 @@ jobs:
 
       - name: Create Forge mod project
         run: |
-          # === settings.gradle ===
           cat > settings.gradle << 'EOF'
           pluginManagement {
               repositories {
@@ -26,7 +25,6 @@ jobs:
           }
           EOF
 
-          # === gradle.properties ===
           cat > gradle.properties << 'EOF'
           org.gradle.jvmargs=-Xmx3G
           minecraft_version=1.21.1
@@ -36,7 +34,6 @@ jobs:
           archives_base_name=simple-fullbright-1.21.1
           EOF
 
-          # === build.gradle ===
           cat > build.gradle << 'EOF'
           buildscript {
               repositories {
@@ -93,12 +90,10 @@ jobs:
           }
           EOF
 
-          # === Создаём директории ===
           mkdir -p src/main/java/ru/fullbright
           mkdir -p src/main/resources/META-INF
           mkdir -p src/main/resources/assets/fullbright/lang
 
-          # === mods.toml ===
           cat > src/main/resources/META-INF/mods.toml << 'EOF'
           modLoader="javafml"
           loaderVersion="[4,)"
@@ -125,7 +120,6 @@ jobs:
           side="BOTH"
           EOF
 
-          # === pack.mcmeta ===
           cat > src/main/resources/pack.mcmeta << 'EOF'
           {
             "pack": {
@@ -135,7 +129,6 @@ jobs:
           }
           EOF
 
-          # === ru_ru.json ===
           cat > src/main/resources/assets/fullbright/lang/ru_ru.json << 'EOF'
           {
             "key.fullbright.toggle": "Переключить Fullbright",
@@ -146,7 +139,6 @@ jobs:
           }
           EOF
 
-          # === en_us.json ===
           cat > src/main/resources/assets/fullbright/lang/en_us.json << 'EOF'
           {
             "key.fullbright.toggle": "Toggle Fullbright",
@@ -157,7 +149,6 @@ jobs:
           }
           EOF
 
-          # === FullbrightMod.java ===
           cat > src/main/java/ru/fullbright/FullbrightMod.java << 'EOF'
           package ru.fullbright;
 
@@ -165,20 +156,20 @@ jobs:
           import net.minecraft.network.chat.Component;
           import net.minecraftforge.api.distmarker.Dist;
           import net.minecraftforge.client.event.InputEvent;
+          import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
           import net.minecraftforge.common.MinecraftForge;
           import net.minecraftforge.eventbus.api.IEventBus;
           import net.minecraftforge.eventbus.api.SubscribeEvent;
           import net.minecraftforge.fml.common.Mod;
           import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
           import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
-          import org.lwjgl.glfw.GLFW;
 
           @Mod(FullbrightMod.MODID)
           public class FullbrightMod {
               public static final String MODID = "fullbright";
 
               private static int currentMode = 0;
-              private static final float[] MODES = {0f, 150f, 500f, 1000f};
+              private static final double[] MODES = {0.0, 150.0, 500.0, 1000.0};
               private static final String[] CHAT_KEYS = {
                   "chat.fullbright.disabled",
                   "chat.fullbright.mode1",
@@ -189,13 +180,17 @@ jobs:
               public FullbrightMod() {
                   IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
                   modBus.addListener(this::clientSetup);
+                  modBus.addListener(this::registerKeyBindings);
 
                   IEventBus forgeBus = MinecraftForge.EVENT_BUS;
                   forgeBus.register(this);
               }
 
               private void clientSetup(FMLClientSetupEvent event) {
-                  KeyBindings.init();
+              }
+
+              private void registerKeyBindings(RegisterKeyMappingsEvent event) {
+                  event.register(KeyBindings.TOGGLE_KEY);
               }
 
               @SubscribeEvent
@@ -209,27 +204,28 @@ jobs:
                       applyBrightness(mc);
 
                       String translationKey = CHAT_KEYS[currentMode];
-                      mc.player.displayClientMessage(
-                          Component.translatable(translationKey),
-                          true
-                      );
+                      if (mc.player != null) {
+                          mc.player.displayClientMessage(
+                              Component.translatable(translationKey),
+                              true
+                          );
+                      }
                   }
               }
 
               private void applyBrightness(Minecraft mc) {
                   if (mc.options != null) {
-                      float brightness = MODES[currentMode];
+                      double brightness = MODES[currentMode];
                       mc.options.gamma().set(brightness);
                   }
               }
 
-              public static float getCurrentBrightness() {
+              public static double getCurrentBrightness() {
                   return MODES[currentMode];
               }
           }
           EOF
 
-          # === KeyBindings.java ===
           cat > src/main/java/ru/fullbright/KeyBindings.java << 'EOF'
           package ru.fullbright;
 
@@ -240,24 +236,17 @@ jobs:
           import org.lwjgl.glfw.GLFW;
 
           public class KeyBindings {
-              public static KeyMapping TOGGLE_KEY;
-
-              public static void init() {
-                  TOGGLE_KEY = new KeyMapping(
-                      "key.fullbright.toggle",
-                      KeyConflictContext.IN_GAME,
-                      KeyModifier.NONE,
-                      InputConstants.Type.KEYSYM,
-                      GLFW.GLFW_KEY_M,
-                      "category.fullbright.main"
-                  );
-
-                  net.minecraftforge.client.ClientRegistry.registerKeyBinding(TOGGLE_KEY);
-              }
+              public static final KeyMapping TOGGLE_KEY = new KeyMapping(
+                  "key.fullbright.toggle",
+                  KeyConflictContext.IN_GAME,
+                  KeyModifier.NONE,
+                  InputConstants.Type.KEYSYM,
+                  GLFW.GLFW_KEY_M,
+                  "category.fullbright.main"
+              );
           }
           EOF
 
-          # === BrightnessEventHandler.java ===
           cat > src/main/java/ru/fullbright/BrightnessEventHandler.java << 'EOF'
           package ru.fullbright;
 
@@ -275,12 +264,12 @@ jobs:
                   if (event.phase != TickEvent.Phase.END) return;
 
                   Minecraft mc = Minecraft.getInstance();
-                  if (mc.options != null) {
-                      float targetBrightness = FullbrightMod.getCurrentBrightness();
-                      float currentBrightness = (float) mc.options.gamma().get();
+                  if (mc.options != null && mc.level != null) {
+                      double targetBrightness = FullbrightMod.getCurrentBrightness();
+                      double currentBrightness = (double) mc.options.gamma().get();
 
-                      if (Math.abs(currentBrightness - targetBrightness) > 0.01f) {
-                          float newBrightness = currentBrightness + (targetBrightness - currentBrightness) * 0.1f;
+                      if (Math.abs(currentBrightness - targetBrightness) > 0.01) {
+                          double newBrightness = currentBrightness + (targetBrightness - currentBrightness) * 0.1;
                           mc.options.gamma().set(newBrightness);
                       }
                   }
