@@ -75,6 +75,12 @@ jobs:
               options.encoding = 'UTF-8'
           }
 
+          processResources {
+              filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+                  expand 'version': project.version
+              }
+          }
+
           jar {
               manifest {
                   attributes([
